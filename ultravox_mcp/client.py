@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Ultravox REST API client — handles auth, retries, and all endpoint calls."""
 
-import json
 import os
 import sys
 import time
@@ -164,17 +163,15 @@ class UltravoxClient:
         self,
         name: str,
         description: str,
-        parameters_schema_json: str,
-        http_config_json: str,
+        parameters_schema: dict,
+        http_config: dict,
     ):
         """
         Create a new Ultravox tool.
 
-        parameters_schema_json: JSON string for the tool's parameter schema.
-        http_config_json: JSON string for the HTTP configuration object.
+        parameters_schema: JSON Schema object for the tool's parameters.
+        http_config: HTTP configuration object.
         """
-        parameters_schema = json.loads(parameters_schema_json)
-        http_config = json.loads(http_config_json)
         body = {
             "name": name,
             "description": description,

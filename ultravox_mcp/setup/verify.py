@@ -24,7 +24,9 @@ def verify() -> bool:
     # Try /account first
     try:
         data = client.get_account()
-        display = data.get("email") or data.get("id") or str(data)[:80]
+        display = str(data)[:80]
+        if isinstance(data, dict):
+            display = data.get("email") or data.get("id") or display
         print(f"  OK — account: {display}")
         return True
     except RuntimeError as exc:
@@ -39,7 +41,9 @@ def verify() -> bool:
     # Fallback: list_calls
     try:
         data = client.list_calls(page_size=1)
-        count = data.get("total") or data.get("count") or "?"
+        count = "?"
+        if isinstance(data, dict):
+            count = data.get("total") or data.get("count") or count
         print(f"  OK — API key valid (calls endpoint reachable, total={count})")
         return True
     except RuntimeError as exc:

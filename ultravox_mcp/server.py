@@ -8,9 +8,6 @@ SCOPE NOTE: This server covers the Ultravox REST layer only.
     Ultravox client SDK and is out of scope for this MCP server.
 """
 
-import json
-from typing import Optional
-
 from mcp.server.fastmcp import FastMCP
 
 from .client import UltravoxClient
@@ -129,24 +126,22 @@ def get_tool(tool_id: str) -> dict:
 def create_tool(
     name: str,
     description: str,
-    parameters_schema_json: str,
-    http_config_json: str,
+    parameters_schema: dict,
+    http_config: dict,
 ) -> dict:
     """
     Create a new Ultravox tool.
 
     name: Short identifier for the tool.
     description: What the tool does (shown to the AI agent).
-    parameters_schema_json: JSON string describing the tool's input parameters
-        (JSON Schema format), e.g. '{"type":"object","properties":{...}}'.
-    http_config_json: JSON string for the HTTP backend config,
-        e.g. '{"url":"https://example.com/api","method":"GET"}'.
+    parameters_schema: JSON Schema object describing the tool's input parameters.
+    http_config: HTTP backend config object.
     """
     return _client().create_tool(
         name=name,
         description=description,
-        parameters_schema_json=parameters_schema_json,
-        http_config_json=http_config_json,
+        parameters_schema=parameters_schema,
+        http_config=http_config,
     )
 
 
