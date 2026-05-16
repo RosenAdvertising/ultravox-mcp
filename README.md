@@ -1,5 +1,11 @@
 # ultravox-mcp
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-F59E0B.svg)](https://opensource.org/licenses/MIT)
+[![11 tools](https://img.shields.io/badge/tools-11-22C55E.svg)](https://github.com/RosenAdvertising/ultravox-mcp)
+[![MCP](https://img.shields.io/badge/MCP-compatible-7C3AED.svg)](https://modelcontextprotocol.io)
+[![Ultravox](https://img.shields.io/badge/Ultravox-Voice%20AI-0EA5E9.svg)](https://ultravox.ai)
+
 MCP server for the [Ultravox](https://ultravox.ai) voice AI platform — REST layer only.
 
 ## Scope
