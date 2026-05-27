@@ -11,6 +11,7 @@ MCP server for the [Ultravox](https://ultravox.ai) voice AI platform — REST la
 ## Scope
 
 This server covers the **Ultravox REST API**:
+
 - Create, list, get, and delete calls
 - Fetch call transcripts (messages)
 - Manage Ultravox tools (list, get, create, delete)
@@ -55,19 +56,19 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ## Tools (11)
 
-| Tool | Description |
-|---|---|
-| `get_account` | Account details for the authenticated user |
-| `list_calls` | Paginated list of calls |
-| `get_call` | Single call by ID |
-| `create_call` | Provision a new call — returns `joinUrl` |
-| `delete_call` | Delete a call |
-| `list_call_messages` | Transcript for a call |
-| `list_tools` | List configured Ultravox tools |
-| `get_tool` | Single tool by ID |
-| `create_tool` | Create a new tool (params + HTTP config as JSON strings) |
-| `delete_tool` | Delete a tool |
-| `list_voices` | Available voices |
+| Tool                 | Description                                              |
+| -------------------- | -------------------------------------------------------- |
+| `get_account`        | Account details for the authenticated user               |
+| `list_calls`         | Paginated list of calls                                  |
+| `get_call`           | Single call by ID                                        |
+| `create_call`        | Provision a new call — returns `joinUrl`                 |
+| `delete_call`        | Delete a call                                            |
+| `list_call_messages` | Transcript for a call                                    |
+| `list_tools`         | List configured Ultravox tools                           |
+| `get_tool`           | Single tool by ID                                        |
+| `create_tool`        | Create a new tool (params + HTTP config as JSON strings) |
+| `delete_tool`        | Delete a tool                                            |
+| `list_voices`        | Available voices                                         |
 
 ## Auth
 

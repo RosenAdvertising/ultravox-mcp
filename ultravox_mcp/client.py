@@ -60,9 +60,7 @@ class UltravoxClient:
         url = f"{BASE_URL}/{path.lstrip('/')}"
         resp = self.session.request(method, url, params=params, json=json_body)
         if resp.status_code == 401:
-            raise RuntimeError(
-                "Ultravox API key invalid. Run: ultravox-mcp-setup"
-            )
+            raise RuntimeError("Ultravox API key invalid. Run: ultravox-mcp-setup")
         if resp.status_code == 429 and _rate_retries < 3:
             wait = _retry_after_seconds(resp)
             print(f"Rate limited. Waiting {wait}s...", file=sys.stderr)
