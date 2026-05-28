@@ -103,7 +103,7 @@ class UltravoxClient:
 
     def list_calls(self, page_size: int = 25, cursor: str = ""):
         """List calls with optional pagination cursor."""
-        params = {"pageSize": page_size}
+        params: dict[str, object] = {"pageSize": page_size}
         if cursor:
             params["cursor"] = cursor
         return self.get("/calls", params=params)
@@ -168,14 +168,36 @@ class UltravoxClient:
         Create a new Ultravox tool.
 
         parameters_schema: JSON Schema object for the tool's parameters.
-        http_config: HTTP configuration object.
+            Converted internally to Ultravox's dynamicParameters format.
+        http_config: {"baseUrlPattern": "...", "httpMethod": "..."}.
+            Mapped to definition.http.
+
+        The Ultravox API requires all tool config inside a `definition`
+        wrapper with a mandatory `modelToolName` field (the name the AI
+        model uses when calling the tool).
         """
-        body = {
+        required_set = set(parameters_schema.get("required") or [])
+        dynamic_params = [
+            {
+                "name": param_name,
+                "location": "PARAMETER_LOCATION_BODY",
+                "schema": param_schema,
+                "required": param_name in required_set,
+            }
+            for param_name, param_schema in (
+                parameters_schema.get("properties") or {}
+            ).items()
+        ]
+        body: dict = {
             "name": name,
-            "description": description,
-            "parametersSchema": parameters_schema,
-            "httpConfig": http_config,
+            "definition": {
+                "modelToolName": name,
+                "description": description,
+                "http": http_config,
+            },
         }
+        if dynamic_params:
+            body["definition"]["dynamicParameters"] = dynamic_params
         return self.post("/tools", body=body)
 
     def delete_tool(self, tool_id: str):
