@@ -2,6 +2,7 @@ from pathlib import Path
 
 from mcp_test_kit.config import (
     ResilienceConfig,
+    SeedConfig,
     SpecCheckConfig,
     SmokeConfig,
     ToolkitConfig,
@@ -14,6 +15,7 @@ _TESTS_DIR = Path(__file__).parent
 
 TOOLKIT = ToolkitConfig(
     mcp_server=mcp,
+    seed=SeedConfig(seed_script=_TESTS_DIR / "seed_data.py"),
     spec_check=SpecCheckConfig(
         endpoints_path=_TESTS_DIR.parent / "endpoints.yaml",
         openapi_path=_TESTS_DIR.parent
