@@ -1,0 +1,23 @@
+tools:
+  - name: get_account
+    read_write: read
+  - name: list_calls
+    read_write: read
+  - name: get_call
+    read_write: read
+  - name: create_call
+    read_write: write
+  - name: delete_call
+    read_write: write
+  - name: list_call_messages
+    read_write: read
+  - name: list_tools
+    read_write: read
+  - name: get_tool
+    read_write: read
+  - name: create_tool
+    read_write: write
+  - name: delete_tool
+    read_write: write
+  - name: list_voices
+    read_write: read
