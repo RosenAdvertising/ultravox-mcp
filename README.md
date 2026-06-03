@@ -78,7 +78,7 @@ Config is loaded from `~/.ultravox-mcp/.env` at startup, falling back to the `UL
 
 ## Call flow
 
-```
+```text
 MCP create_call  →  Ultravox REST  →  { callId, joinUrl, ... }
                                               |
                               joinUrl (wss://...) passed to Ultravox SDK
