@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "MCP server for Ultravox voice AI — call management, transcripts, tool configuration"
 requires-python = ">=3.10"
 dependencies = [
-    "mcp>=1.0.0",
+    "mcp>=1.27.2",
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
 ]
