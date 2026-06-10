@@ -32,7 +32,7 @@ pip install -e /path/to/ultravox-mcp
 ultravox-mcp-setup
 ```
 
-Prompts for your API key (find it at `app.ultravox.ai → Account → API Keys`), saves it to `~/.ultravox-mcp/.env`, and verifies the connection.
+Prompts for your API key (find it at `app.ultravox.ai → Account → API Keys`), saves it to your OS keyring (see [Auth](#auth)), and verifies the connection.
 
 To verify an existing key without re-running setup:
 
@@ -74,7 +74,32 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 API key is sent as `X-API-Key: {ULTRAVOX_API_KEY}` on every request.
 
-Config is loaded from `~/.ultravox-mcp/.env` at startup, falling back to the `ULTRAVOX_API_KEY` environment variable.
+By default your API key (`ULTRAVOX_API_KEY`) is stored in your operating
+system's native secret store via the cross-platform
+[`keyring`](https://github.com/jaraco/keyring) library:
+
+| OS      | Backend                                  |
+| ------- | ---------------------------------------- |
+| macOS   | Keychain                                 |
+| Windows | Credential Manager                       |
+| Linux   | Secret Service (GNOME Keyring / KWallet) |
+
+The secret is saved under the service name `ultravox-mcp`. Nothing is written to
+disk in clear text.
+
+**File fallback.** On a host with no keyring backend (e.g. a headless Linux box
+without Secret Service), or if you set `ULTRAVOX_MCP_USE_KEYRING=0`, the key
+falls back to a `~/.ultravox-mcp/.env` file with `0600` permissions.
+
+**Read order.** Values resolve in the order OS keyring → process environment →
+`.env` file. So a rotated key in the keyring always wins, and a value exported in
+your shell overrides the file fallback without touching the keyring.
+
+**Pluggable backend.** `keyring` lets you point at any secret store. For example,
+install [`keyrings.cryptfile`](https://pypi.org/project/keyrings.cryptfile/) for
+an encrypted file backend, or a cloud backend, then select it with the standard
+`PYTHON_KEYRING_BACKEND` environment variable or a `keyringrc.cfg`. See the
+[keyring configuration docs](https://github.com/jaraco/keyring#configuring).
 
 ## Call flow
 

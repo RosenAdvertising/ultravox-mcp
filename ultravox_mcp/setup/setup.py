@@ -2,24 +2,15 @@
 """
 ultravox-mcp-setup — interactive setup wizard.
 
-Prompts for the Ultravox API key, saves it to ~/.ultravox-mcp/.env,
-then runs a verification check against the API.
+Prompts for the Ultravox API key, saves it to the OS keyring (or a
+0600 ~/.ultravox-mcp/.env file as a fallback), then runs a verification
+check against the API.
 """
 
 import os
 import sys
-from pathlib import Path
 
-
-CONFIG_DIR = Path.home() / ".ultravox-mcp"
-ENV_FILE = CONFIG_DIR / ".env"
-
-
-def _save_api_key(api_key: str) -> None:
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    ENV_FILE.write_text(f"ULTRAVOX_API_KEY={api_key}\n")
-    ENV_FILE.chmod(0o600)
-    print(f"API key saved to {ENV_FILE}")
+from ultravox_mcp import credentials
 
 
 def main() -> None:
@@ -30,14 +21,8 @@ def main() -> None:
     print("Find your API key at: app.ultravox.ai → Account → API Keys")
     print()
 
-    # Check for existing key
-    existing = None
-    if ENV_FILE.exists():
-        for line in ENV_FILE.read_text().splitlines():
-            line = line.strip()
-            if line.startswith("ULTRAVOX_API_KEY="):
-                existing = line.split("=", 1)[1].strip()
-                break
+    # Check for an existing key in the configured store (keyring or .env).
+    existing = credentials.get_secret("ULTRAVOX_API_KEY")
 
     if existing:
         masked = existing[:6] + "..." + existing[-4:] if len(existing) > 10 else "****"
@@ -53,7 +38,12 @@ def main() -> None:
         print("No key entered. Aborting.", file=sys.stderr)
         sys.exit(1)
 
-    _save_api_key(api_key)
+    # Persist through the pluggable store (OS keyring by default).
+    backend = credentials.set_secret("ULTRAVOX_API_KEY", api_key)
+    if backend == "keyring":
+        print(f"API key saved to the OS keyring ({credentials.storage_backend()}).")
+    else:
+        print(f"API key saved to {credentials.ENV_FILE} (0600).")
 
     # Inject into current process env so verify can use it immediately
     os.environ["ULTRAVOX_API_KEY"] = api_key
