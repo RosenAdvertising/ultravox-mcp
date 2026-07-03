@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=82.0.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ultravox-mcp"
+version = "0.1.0"
+description = "MCP server for Ultravox voice AI — call management, transcripts, tool configuration"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.28.1,<2",
+    "requests>=2.34.2",
+    "python-dotenv>=1.2.2",
+    "keyring>=25.7.0",
+]
+
+[project.scripts]
+ultravox-mcp = "ultravox_mcp.server:main"
+ultravox-mcp-setup = "ultravox_mcp.setup.setup:main"
+ultravox-mcp-verify = "ultravox_mcp.setup.verify:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ultravox_mcp*"]
+
+[tool.pyright]
+include = ["."]
+exclude = ["**/node_modules", "**/__pycache__", ".venv", "venv", "dist", "build"]
+typeCheckingMode = "basic"
+reportMissingImports = "warning"
+reportMissingTypeStubs = false
