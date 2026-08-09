@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Pluggable credential storage for ultravox-mcp.
 
 Secrets (API keys, tokens, passwords) are stored in the operating system's
@@ -24,7 +23,9 @@ See https://github.com/jaraco/keyring#configuring for details.
 
 from __future__ import annotations
 
+import logging
 import os
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,8 @@ CONFIG_DIR = Path.home() / ".ultravox-mcp"
 ENV_FILE = CONFIG_DIR / ".env"
 _USE_KEYRING_FLAG = "ULTRAVOX_MCP_USE_KEYRING"
 # ---------------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
 
 # keyring is an optional-at-runtime dependency: import defensively so a missing
 # or broken backend degrades to file storage instead of crashing the server.
@@ -61,19 +64,23 @@ def _keyring_enabled() -> bool:
     back to the file store rather than raising.
     """
     if not _KEYRING_IMPORTED:
+        logger.debug("keyring_unavailable", extra={"reason": "import_failed"})
         return False
     flag = os.environ.get(_USE_KEYRING_FLAG, "1").strip().lower()
     if flag in ("0", "false", "no", "off"):
+        logger.debug("keyring_unavailable", extra={"reason": "disabled"})
         return False
     try:
         backend = keyring.get_keyring()
     except Exception:  # noqa: BLE001
+        logger.warning("keyring_unavailable", extra={"reason": "backend_error"})
         return False
     # keyring.backends.fail.Keyring / .null.Keyring are non-functional sentinels.
     cls = backend.__class__.__module__ + "." + backend.__class__.__name__
-    if "fail." in cls or "null." in cls:
-        return False
-    return True
+    enabled = not ("fail." in cls or "null." in cls)
+    if not enabled:
+        logger.debug("keyring_unavailable", extra={"reason": "null_backend"})
+    return enabled
 
 
 def _read_env_file() -> dict[str, str]:
@@ -92,16 +99,12 @@ def _read_env_file() -> dict[str, str]:
 def _write_env_file(values: dict[str, str]) -> None:
     """Write the fallback ``.env`` file with 0600 perms in a 0700 dir."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    try:
+    with suppress(OSError):
         CONFIG_DIR.chmod(0o700)
-    except OSError:
-        pass
     lines = [f"{k}={v}" for k, v in values.items()]
     ENV_FILE.write_text("\n".join(lines) + ("\n" if lines else ""))
-    try:
+    with suppress(OSError):
         ENV_FILE.chmod(0o600)
-    except OSError:
-        pass
 
 
 def get_secret(key: str, default: str = "") -> str:
@@ -118,7 +121,7 @@ def get_secret(key: str, default: str = "") -> str:
             if val:
                 return val
         except KeyringError:
-            pass  # fall through to file/env
+            logger.warning("keyring_read_failed", extra={"reason": "backend_error"})
     # process env set by the parent shell takes next precedence
     env_val = os.environ.get(key)
     if env_val:
@@ -147,7 +150,7 @@ def set_secret(key: str, value: str) -> str:
                 _write_env_file(existing)
             return "keyring"
         except KeyringError:
-            pass  # fall back to file
+            logger.warning("keyring_write_failed", extra={"reason": "backend_error"})
     existing = _read_env_file()
     existing[key] = value
     _write_env_file(existing)
@@ -160,7 +163,10 @@ def delete_secret(key: str) -> None:
         try:
             keyring.delete_password(SERVICE_NAME, key)
         except Exception:  # noqa: BLE001 - missing entry is fine
-            pass
+            logger.debug(
+                "keyring_delete_skipped",
+                extra={"reason": "missing_or_unavailable"},
+            )
     existing = _read_env_file()
     if key in existing:
         existing.pop(key, None)

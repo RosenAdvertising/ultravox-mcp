@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
 """
-ultravox-mcp — FastMCP server for the Ultravox voice AI REST API.
+ultravox-mcp — MCP server for the Ultravox voice AI REST API.
 
 SCOPE NOTE: This server covers the Ultravox REST layer only.
   - create_call returns a joinUrl.
@@ -9,12 +8,18 @@ SCOPE NOTE: This server covers the Ultravox REST layer only.
 """
 
 import json
-from mcp.server.fastmcp import FastMCP
+from typing import Annotated, Any
+
+from mcp.server.mcpserver import MCPServer
+from pydantic import Field
 
 from .client import UltravoxClient
 
-mcp = FastMCP(
+PageSize = Annotated[int, Field(ge=1, le=200)]
+
+mcp = MCPServer(
     "ultravox-mcp",
+    version="0.1.0",
     instructions=(
         "MCP server for Ultravox voice AI — REST layer only. "
         "Use create_call to provision a call; the response includes a joinUrl "
@@ -35,7 +40,7 @@ def _client() -> UltravoxClient:
 
 
 @mcp.tool()
-def get_account() -> dict:
+def get_account() -> dict[str, Any]:
     """Return account details for the authenticated Ultravox user."""
     return _client().get_account()
 
@@ -46,18 +51,18 @@ def get_account() -> dict:
 
 
 @mcp.tool()
-def list_calls(page_size: int = 25, cursor: str = "") -> dict:
+def list_calls(page_size: PageSize = 25, cursor: str = "") -> dict[str, Any]:
     """
     List Ultravox calls.
 
-    page_size: Number of results per page (default 25).
+    page_size: Number of results to return (1-200, default 25).
     cursor: Pagination cursor from a previous response. Leave blank for the first page.
     """
     return _client().list_calls(page_size=page_size, cursor=cursor)
 
 
 @mcp.tool()
-def get_call(call_id: str) -> dict:
+def get_call(call_id: str) -> dict[str, Any]:
     """Get details for a single Ultravox call by its ID."""
     return _client().get_call(call_id)
 
@@ -69,7 +74,7 @@ def create_call(
     temperature: float = 0.7,
     first_speaker: str = "FIRST_SPEAKER_AGENT",
     max_duration: str = "600s",
-) -> dict:
+) -> dict[str, Any]:
     """
     Create a new Ultravox call. Returns a joinUrl — use your WebSocket/SDK client
     to join. The MCP handles REST only; real-time audio is out of scope.
@@ -90,18 +95,18 @@ def create_call(
 
 
 @mcp.tool()
-def delete_call(call_id: str) -> dict:
+def delete_call(call_id: str) -> dict[str, Any]:
     """Delete an Ultravox call by its ID."""
     return _client().delete_call(call_id)
 
 
 @mcp.tool()
-def list_call_messages(call_id: str, page_size: int = 50) -> dict:
+def list_call_messages(call_id: str, page_size: PageSize = 50) -> dict[str, Any]:
     """
     Retrieve the message transcript for a completed or active Ultravox call.
 
     call_id: The call ID to fetch messages for.
-    page_size: Number of messages per page (default 50).
+    page_size: Number of messages to return (1-200, default 50).
     """
     return _client().list_call_messages(call_id=call_id, page_size=page_size)
 
@@ -112,13 +117,13 @@ def list_call_messages(call_id: str, page_size: int = 50) -> dict:
 
 
 @mcp.tool()
-def list_tools(page_size: int = 25) -> dict:
+def list_tools(page_size: PageSize = 25) -> dict[str, Any]:
     """List all Ultravox tools configured for this account."""
     return _client().list_tools(page_size=page_size)
 
 
 @mcp.tool()
-def get_tool(tool_id: str) -> dict:
+def get_tool(tool_id: str) -> dict[str, Any]:
     """Get details for a single Ultravox tool by its ID."""
     return _client().get_tool(tool_id)
 
@@ -127,9 +132,9 @@ def get_tool(tool_id: str) -> dict:
 def create_tool(
     name: str,
     description: str,
-    parameters_schema: dict,
-    http_config: dict,
-) -> dict:
+    parameters_schema: dict[str, Any],
+    http_config: dict[str, Any],
+) -> dict[str, Any]:
     """
     Create a new Ultravox tool.
 
@@ -147,7 +152,7 @@ def create_tool(
 
 
 @mcp.tool()
-def delete_tool(tool_id: str) -> dict:
+def delete_tool(tool_id: str) -> dict[str, Any]:
     """Delete an Ultravox tool by its ID."""
     return _client().delete_tool(tool_id)
 
@@ -158,7 +163,7 @@ def delete_tool(tool_id: str) -> dict:
 
 
 @mcp.tool()
-def list_voices(page_size: int = 25) -> dict:
+def list_voices(page_size: PageSize = 25) -> dict[str, Any]:
     """List available Ultravox voices."""
     return _client().list_voices(page_size=page_size)
 
@@ -327,8 +332,8 @@ def review_tool_inventory() -> str:
 # ---------------------------------------------------------------------------
 
 
-def main():
-    mcp.run()
+def main() -> None:
+    mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

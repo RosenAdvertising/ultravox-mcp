@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
 """Ultravox REST API client — handles auth, retries, and all endpoint calls."""
 
+import logging
 import os
-import sys
 import time
 
 import requests
@@ -10,6 +9,9 @@ import requests
 from ultravox_mcp import credentials
 
 BASE_URL = "https://api.ultravox.ai/api"
+MAX_PAGE_SIZE = 200
+
+logger = logging.getLogger(__name__)
 
 # Resolve credentials through the pluggable store (OS keyring -> .env file).
 credentials.load_into_environ(["ULTRAVOX_API_KEY"])
@@ -26,15 +28,33 @@ def _json_response(resp):
     try:
         return resp.json()
     except ValueError:
-        raise RuntimeError(
-            f"Ultravox API returned non-JSON ({resp.status_code}): {resp.text[:200]}"
+        logger.warning(
+            "ultravox_response_rejected",
+            extra={"reason": "non_json_response", "status_code": resp.status_code},
         )
+        raise RuntimeError(
+            f"Ultravox API returned non-JSON ({resp.status_code})"
+        ) from None
+
+
+def _validate_page_size(page_size: int) -> int:
+    if not 1 <= page_size <= MAX_PAGE_SIZE:
+        logger.warning(
+            "ultravox_list_rejected",
+            extra={"reason": "page_size_out_of_range"},
+        )
+        raise ValueError(f"page_size must be between 1 and {MAX_PAGE_SIZE}")
+    return page_size
 
 
 class UltravoxClient:
     def __init__(self):
         api_key = os.environ.get("ULTRAVOX_API_KEY", "")
         if not api_key:
+            logger.warning(
+                "ultravox_client_rejected",
+                extra={"reason": "missing_api_key"},
+            )
             raise RuntimeError("No Ultravox API key found. Run: ultravox-mcp-setup")
         self.session = requests.Session()
         self.session.headers.update(
@@ -49,10 +69,17 @@ class UltravoxClient:
         url = f"{BASE_URL}/{path.lstrip('/')}"
         resp = self.session.request(method, url, params=params, json=json_body)
         if resp.status_code == 401:
+            logger.warning(
+                "ultravox_request_rejected",
+                extra={"reason": "invalid_api_key", "status_code": 401},
+            )
             raise RuntimeError("Ultravox API key invalid. Run: ultravox-mcp-setup")
         if resp.status_code == 429 and _rate_retries < 3:
             wait = _retry_after_seconds(resp)
-            print(f"Rate limited. Waiting {wait}s...", file=sys.stderr)
+            logger.warning(
+                "ultravox_request_rate_limited",
+                extra={"retry_after_seconds": wait},
+            )
             time.sleep(wait)
             return self._request(
                 method,
@@ -64,9 +91,14 @@ class UltravoxClient:
         if resp.status_code == 204:
             return {"success": True}
         if not resp.ok:
-            raise RuntimeError(
-                f"Ultravox API error {resp.status_code}: {resp.text[:400]}"
+            logger.warning(
+                "ultravox_request_rejected",
+                extra={
+                    "reason": "vendor_error",
+                    "status_code": resp.status_code,
+                },
             )
+            raise RuntimeError(f"Ultravox API error {resp.status_code}")
         return _json_response(resp)
 
     def get(self, path, params=None):
@@ -92,7 +124,7 @@ class UltravoxClient:
 
     def list_calls(self, page_size: int = 25, cursor: str = ""):
         """List calls with optional pagination cursor."""
-        params: dict[str, object] = {"pageSize": page_size}
+        params: dict[str, object] = {"pageSize": _validate_page_size(page_size)}
         if cursor:
             params["cursor"] = cursor
         return self.get("/calls", params=params)
@@ -130,7 +162,7 @@ class UltravoxClient:
 
     def list_call_messages(self, call_id: str, page_size: int = 50):
         """List messages (transcript) for a call."""
-        params = {"pageSize": page_size}
+        params = {"pageSize": _validate_page_size(page_size)}
         return self.get(f"/calls/{call_id}/messages", params=params)
 
     # -------------------------------------------------------------------------
@@ -139,7 +171,7 @@ class UltravoxClient:
 
     def list_tools(self, page_size: int = 25):
         """List all configured Ultravox tools."""
-        params = {"pageSize": page_size}
+        params = {"pageSize": _validate_page_size(page_size)}
         return self.get("/tools", params=params)
 
     def get_tool(self, tool_id: str):
@@ -199,5 +231,5 @@ class UltravoxClient:
 
     def list_voices(self, page_size: int = 25):
         """List available Ultravox voices."""
-        params = {"pageSize": page_size}
+        params = {"pageSize": _validate_page_size(page_size)}
         return self.get("/voices", params=params)
