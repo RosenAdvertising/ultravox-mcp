@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 ultravox-mcp-verify — verify that the configured API key works.
 
@@ -7,6 +6,7 @@ Ultravox tiers expose it), falls back to GET /calls?pageSize=1.
 """
 
 import sys
+
 from ultravox_mcp.client import UltravoxClient
 
 
@@ -24,9 +24,8 @@ def verify() -> bool:
     # Try /account first
     try:
         data = client.get_account()
-        display = str(data)[:80]
-        if isinstance(data, dict):
-            display = data.get("email") or data.get("id") or display
+        account_id = data.get("id") if isinstance(data, dict) else None
+        display = f"id={account_id}" if account_id else "details available"
         print(f"  OK — account: {display}")
         return True
     except RuntimeError as exc:

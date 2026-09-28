@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 ultravox-mcp-setup — interactive setup wizard.
 
