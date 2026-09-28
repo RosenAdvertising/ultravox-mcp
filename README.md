@@ -86,8 +86,8 @@ system's native secret store via the cross-platform
 | Windows | Credential Manager                       |
 | Linux   | Secret Service (GNOME Keyring / KWallet) |
 
-The secret is saved under the service name `ultravox-mcp`. Nothing is written to
-disk in clear text.
+With an available keyring backend, the secret is saved under the service name
+`ultravox-mcp` without a clear-text file copy.
 
 **File fallback.** On a host with no keyring backend (e.g. a headless Linux box
 without Secret Service), or if you set `ULTRAVOX_MCP_USE_KEYRING=0`, the key
