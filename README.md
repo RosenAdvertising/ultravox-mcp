@@ -8,6 +8,8 @@
 
 MCP server for the [Ultravox](https://ultravox.ai) voice AI platform — REST layer only.
 
+Requires Python MCP SDK >=2.2,<3; the protocol revision is 2026-07-28.
+
 ## Scope
 
 This server covers the **Ultravox REST API**:
