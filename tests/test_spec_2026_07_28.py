@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from mcp.client.client import Client
+from mcp import Client
 from starlette.testclient import TestClient
 
 import ultravox_mcp.server as server_module
@@ -280,13 +280,13 @@ def test_modern_and_legacy_negotiation() -> None:
         async with Client(mcp, mode="auto") as modern:
             assert modern.session.protocol_version == PROTOCOL_VERSION
             assert modern.session.discover_result is not None
-            result = await modern.list_tools(cache_mode="reload")
+            result = await modern.list_tools(cache_mode="refresh")
             assert [tool.name for tool in result.tools] == EXPECTED_TOOLS
             assert result.result_type == "complete"
 
         async with Client(mcp, mode="legacy") as legacy:
             assert legacy.session.protocol_version == LEGACY_PROTOCOL_VERSION
-            result = await legacy.list_tools(cache_mode="reload")
+            result = await legacy.list_tools(cache_mode="refresh")
             assert [tool.name for tool in result.tools] == EXPECTED_TOOLS
 
     asyncio.run(exercise_both_eras())
