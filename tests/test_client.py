@@ -22,8 +22,18 @@ def client(monkeypatch: pytest.MonkeyPatch) -> UltravoxClient:
 @pytest.mark.parametrize(
     "method,args,expected_path,expected_params",
     [
-        ("list_calls", (200, "next-page"), "/calls", {"pageSize": 200, "cursor": "next-page"}),
-        ("list_call_messages", ("call-test", 200), "/calls/call-test/messages", {"pageSize": 200}),
+        (
+            "list_calls",
+            (200, "next-page"),
+            "/calls",
+            {"pageSize": 200, "cursor": "next-page"},
+        ),
+        (
+            "list_call_messages",
+            ("call-test", 200),
+            "/calls/call-test/messages",
+            {"pageSize": 200},
+        ),
         ("list_tools", (200,), "/tools", {"pageSize": 200}),
         ("list_voices", (200,), "/voices", {"pageSize": 200}),
     ],

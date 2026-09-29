@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from mcp.client import Client
+from mcp.client.client import Client
 from starlette.testclient import TestClient
 
 import ultravox_mcp.server as server_module
