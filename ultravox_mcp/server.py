@@ -8,16 +8,103 @@ SCOPE NOTE: This server covers the Ultravox REST layer only.
 """
 
 import json
+import logging
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
-from pydantic import Field
+from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
+from mcp_types import CallToolResult, TextContent
+from pydantic import Field, ValidationError
 
-from .client import UltravoxClient
+from .client import (
+    ArgumentValidationError,
+    AuthenticationError,
+    MissingCredentialsError,
+    NotFoundError,
+    RateLimitError,
+    UltravoxClient,
+    VendorHTTPError,
+)
 
 PageSize = Annotated[int, Field(ge=1, le=200)]
 
-mcp = MCPServer(
+logger = logging.getLogger(__name__)
+
+
+class ActionableMCPServer(MCPServer):
+    """Convert classified failures to safe tool results at the shared MCP boundary."""
+
+    async def call_tool(self, name, arguments, context=None):
+        try:
+            return await super().call_tool(name, arguments, context)
+        except (ToolError, UnexpectedToolError) as exc:
+            cause: BaseException | None = exc
+            while cause is not None:
+                if isinstance(
+                    cause,
+                    MissingCredentialsError
+                    | AuthenticationError
+                    | VendorHTTPError
+                    | RateLimitError
+                    | NotFoundError
+                    | ArgumentValidationError,
+                ):
+                    return _tool_error(str(cause))
+                cause = cause.__cause__
+
+            if isinstance(exc, ToolError) and isinstance(
+                exc.__cause__, ValidationError
+            ):
+                return _validation_result(self, name, exc.__cause__)
+
+            logger.warning("unexpected_tool_error")
+            return _tool_error(f"Error executing tool {name}")
+
+
+def _tool_error(message: str) -> CallToolResult:
+    return CallToolResult(
+        content=[TextContent(type="text", text=message)], is_error=True
+    )
+
+
+def _validation_result(
+    server: ActionableMCPServer, name: str, error: ValidationError
+) -> CallToolResult:
+    registered = server._tool_manager.get_tool(name)
+    properties: dict[str, Any] = {}
+    if registered:
+        raw_properties = registered.parameters.get("properties", {})
+        if isinstance(raw_properties, dict):
+            properties = raw_properties
+    issues: list[str] = []
+    for issue in error.errors():
+        field = str(issue["loc"][0]) if issue["loc"] else "argument"
+        field_schema = properties.get(field, {})
+        expected = _expected_shape(field_schema)
+        if field not in issues:
+            issues.append(f"{field} (expected {expected})")
+    if not issues:
+        issues.append("arguments (expected the registered input schema)")
+    return _tool_error(f"Invalid arguments for {name}: " + "; ".join(issues) + ".")
+
+
+def _expected_shape(schema: dict[str, Any]) -> str:
+    if "minimum" in schema or "maximum" in schema:
+        return f"a number from {schema.get('minimum', 'the minimum')} to {schema.get('maximum', 'the maximum')}"
+    kind = schema.get("type")
+    if not isinstance(kind, str):
+        return "the required input shape"
+    return {
+        "string": "a string",
+        "integer": "an integer",
+        "number": "a number",
+        "object": "an object",
+        "array": "an array",
+        "boolean": "a boolean",
+    }.get(kind, "the required input shape")
+
+
+mcp = ActionableMCPServer(
     "ultravox-mcp",
     version="0.1.0",
     instructions=(

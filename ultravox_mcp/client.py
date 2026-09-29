@@ -13,15 +13,73 @@ MAX_PAGE_SIZE = 200
 
 logger = logging.getLogger(__name__)
 
+
+class UltravoxClientError(RuntimeError):
+    """A classified, safe-to-display Ultravox request failure."""
+
+
+class MissingCredentialsError(UltravoxClientError):
+    pass
+
+
+class AuthenticationError(UltravoxClientError):
+    pass
+
+
+class VendorHTTPError(UltravoxClientError):
+    pass
+
+
+class RateLimitError(UltravoxClientError):
+    pass
+
+
+class NotFoundError(UltravoxClientError):
+    pass
+
+
+class ArgumentValidationError(ValueError):
+    """A client-side argument failed a documented constraint."""
+
+
 # Resolve credentials through the pluggable store (OS keyring -> .env file).
 credentials.load_into_environ(["ULTRAVOX_API_KEY"])
 
 
 def _retry_after_seconds(resp, default=10):
     try:
-        return int(resp.headers.get("Retry-After", default))
+        value = resp.headers.get("Retry-After", default)
+        # Only accept a small decimal delay. Dates, URLs, and arbitrary header text
+        # are not reflected to the caller.
+        if not str(value).isascii() or not str(value).isdigit():
+            return default
+        return min(max(int(value), 1), 3600)
     except (TypeError, ValueError):
         return default
+
+
+_SAFE_VENDOR_REASONS = {
+    "invalid_request": "The request was rejected.",
+    "permission_denied": "The operation is not permitted.",
+    "resource_exhausted": "The service is temporarily busy.",
+    "unavailable": "The service is temporarily unavailable.",
+    "internal": "The service could not complete the request.",
+}
+
+
+def _safe_vendor_reason(resp) -> str:
+    """Map a structured vendor code to an allowlisted explanation, else stay generic."""
+    try:
+        payload = resp.json()
+        error = payload.get("error", {}) if isinstance(payload, dict) else {}
+        code = error.get("code") if isinstance(error, dict) else None
+        if isinstance(code, str):
+            return _SAFE_VENDOR_REASONS.get(
+                code.lower(), "The service rejected the request."
+            )
+    except (ValueError, TypeError, AttributeError):
+        pass
+    return "The service rejected the request."
 
 
 def _json_response(resp):
@@ -32,7 +90,7 @@ def _json_response(resp):
             "ultravox_response_rejected",
             extra={"reason": "non_json_response", "status_code": resp.status_code},
         )
-        raise RuntimeError(
+        raise VendorHTTPError(
             f"Ultravox API returned non-JSON ({resp.status_code})"
         ) from None
 
@@ -43,7 +101,9 @@ def _validate_page_size(page_size: int) -> int:
             "ultravox_list_rejected",
             extra={"reason": "page_size_out_of_range"},
         )
-        raise ValueError(f"page_size must be between 1 and {MAX_PAGE_SIZE}")
+        raise ArgumentValidationError(
+            f"page_size must be between 1 and {MAX_PAGE_SIZE}"
+        )
     return page_size
 
 
@@ -55,7 +115,9 @@ class UltravoxClient:
                 "ultravox_client_rejected",
                 extra={"reason": "missing_api_key"},
             )
-            raise RuntimeError("No Ultravox API key found. Run: ultravox-mcp-setup")
+            raise MissingCredentialsError(
+                "No Ultravox API key found. Set ULTRAVOX_API_KEY or run: ultravox-mcp-setup"
+            )
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -68,12 +130,14 @@ class UltravoxClient:
     def _request(self, method, path, params=None, json_body=None, _rate_retries=0):
         url = f"{BASE_URL}/{path.lstrip('/')}"
         resp = self.session.request(method, url, params=params, json=json_body)
-        if resp.status_code == 401:
+        if resp.status_code in (401, 403):
             logger.warning(
                 "ultravox_request_rejected",
-                extra={"reason": "invalid_api_key", "status_code": 401},
+                extra={"reason": "invalid_api_key", "status_code": resp.status_code},
             )
-            raise RuntimeError("Ultravox API key invalid. Run: ultravox-mcp-setup")
+            raise AuthenticationError(
+                "Ultravox authorization was rejected or expired. Re-authorize the Ultravox API key."
+            )
         if resp.status_code == 429 and _rate_retries < 3:
             wait = _retry_after_seconds(resp)
             logger.warning(
@@ -98,7 +162,17 @@ class UltravoxClient:
                     "status_code": resp.status_code,
                 },
             )
-            raise RuntimeError(f"Ultravox API error {resp.status_code}")
+            if resp.status_code == 404:
+                raise NotFoundError(
+                    "Ultravox resource was not found (HTTP 404). Check the supplied identifier."
+                )
+            if resp.status_code == 429:
+                retry_after = _retry_after_seconds(resp)
+                raise RateLimitError(
+                    f"Ultravox rate limit reached (HTTP 429). Retry after {retry_after} seconds."
+                )
+            reason = _safe_vendor_reason(resp)
+            raise VendorHTTPError(f"Ultravox API error {resp.status_code}: {reason}")
         return _json_response(resp)
 
     def get(self, path, params=None):
