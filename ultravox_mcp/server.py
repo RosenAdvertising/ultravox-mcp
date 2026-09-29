@@ -35,6 +35,8 @@ class ActionableMCPServer(MCPServer):
     """Convert classified failures to safe tool results at the shared MCP boundary."""
 
     async def call_tool(self, name, arguments, context=None):
+        if self._tool_manager.get_tool(name) is None:
+            return _tool_error("Unknown tool. Choose a name from tools/list.")
         try:
             return await super().call_tool(name, arguments, context)
         except (ToolError, UnexpectedToolError) as exc:
@@ -52,7 +54,7 @@ class ActionableMCPServer(MCPServer):
                     return _tool_error(str(cause))
                 cause = cause.__cause__
 
-            if isinstance(exc, ToolError) and isinstance(
+            if not isinstance(exc, UnexpectedToolError) and isinstance(
                 exc.__cause__, ValidationError
             ):
                 return _validation_result(self, name, exc.__cause__)
@@ -77,12 +79,15 @@ def _validation_result(
         if isinstance(raw_properties, dict):
             properties = raw_properties
     issues: list[str] = []
-    for issue in error.errors():
+    for issue in error.errors(include_input=False, include_url=False):
         field = str(issue["loc"][0]) if issue["loc"] else "argument"
+        if field not in properties:
+            field = "argument"
         field_schema = properties.get(field, {})
         expected = _expected_shape(field_schema)
-        if field not in issues:
-            issues.append(f"{field} (expected {expected})")
+        detail = f"{field} (expected {expected})"
+        if detail not in issues:
+            issues.append(detail)
     if not issues:
         issues.append("arguments (expected the registered input schema)")
     return _tool_error(f"Invalid arguments for {name}: " + "; ".join(issues) + ".")
@@ -90,7 +95,8 @@ def _validation_result(
 
 def _expected_shape(schema: dict[str, Any]) -> str:
     if "minimum" in schema or "maximum" in schema:
-        return f"a number from {schema.get('minimum', 'the minimum')} to {schema.get('maximum', 'the maximum')}"
+        kind = "an integer" if schema.get("type") == "integer" else "a number"
+        return f"{kind} from {schema.get('minimum', 'the minimum')} to {schema.get('maximum', 'the maximum')}"
     kind = schema.get("type")
     if not isinstance(kind, str):
         return "the required input shape"

@@ -136,7 +136,7 @@ class UltravoxClient:
                 extra={"reason": "invalid_api_key", "status_code": resp.status_code},
             )
             raise AuthenticationError(
-                "Ultravox authorization was rejected or expired. Re-authorize the Ultravox API key."
+                "Ultravox authorization was rejected or expired. Re-authorize with: ultravox-mcp-setup"
             )
         if resp.status_code == 429 and _rate_retries < 3:
             wait = _retry_after_seconds(resp)

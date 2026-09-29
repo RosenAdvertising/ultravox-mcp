@@ -6,6 +6,7 @@ from typing import cast
 from unittest.mock import Mock
 
 import pytest
+from mcp import Client
 from mcp_types import CallToolResult, TextContent
 
 import ultravox_mcp.server as server_module
@@ -21,7 +22,11 @@ from ultravox_mcp.client import (
 
 
 def _call(name: str, arguments: dict[str, object] | None = None) -> CallToolResult:
-    result = asyncio.run(server_module.mcp.call_tool(name, arguments or {}))
+    async def call():
+        async with Client(server_module.mcp, cache=None) as sdk:
+            return await sdk.call_tool(name, arguments or {})
+
+    result = asyncio.run(call())
     assert isinstance(result, CallToolResult)
     return result
 
@@ -41,9 +46,9 @@ def _texts(result: CallToolResult) -> list[str]:
         ),
         (
             AuthenticationError(
-                "Ultravox authorization was rejected or expired. Re-authorize the Ultravox API key."
+                "Ultravox authorization was rejected or expired. Re-authorize with: ultravox-mcp-setup"
             ),
-            "Ultravox authorization was rejected or expired. Re-authorize the Ultravox API key.",
+            "Ultravox authorization was rejected or expired. Re-authorize with: ultravox-mcp-setup",
         ),
         (
             VendorHTTPError(
@@ -115,7 +120,7 @@ def test_schema_validation_returns_name_and_shape_without_value():
     result = _call("list_calls", {"page_size": "FAKE-PII-secret-token"})
     assert result.is_error is True
     assert _texts(result) == [
-        "Invalid arguments for list_calls: page_size (expected a number from 1 to 200)."
+        "Invalid arguments for list_calls: page_size (expected an integer from 1 to 200)."
     ]
     assert "FAKE-PII" not in repr(result.content)
 
@@ -126,12 +131,12 @@ def test_schema_validation_returns_name_and_shape_without_value():
         (
             401,
             {},
-            "Ultravox authorization was rejected or expired. Re-authorize the Ultravox API key.",
+            "Ultravox authorization was rejected or expired. Re-authorize with: ultravox-mcp-setup",
         ),
         (
             403,
             {},
-            "Ultravox authorization was rejected or expired. Re-authorize the Ultravox API key.",
+            "Ultravox authorization was rejected or expired. Re-authorize with: ultravox-mcp-setup",
         ),
         (
             404,
@@ -161,6 +166,7 @@ def test_http_failures_are_classified_and_sanitized(
 ):
     monkeypatch.setenv("ULTRAVOX_API_KEY", "DUMMY-TEST-TOKEN")
     client = UltravoxClient()
+    monkeypatch.setattr("ultravox_mcp.client.time.sleep", lambda _seconds: None)
     response = Mock(
         status_code=status, ok=False, headers={}, json=Mock(return_value=payload)
     )
@@ -168,6 +174,10 @@ def test_http_failures_are_classified_and_sanitized(
     with pytest.raises(RuntimeError) as caught:
         client.get("/calls")
     assert str(caught.value) == expected
+    monkeypatch.setattr(server_module, "_client", lambda: client)
+    result = _call("get_account")
+    assert result.is_error
+    assert _texts(result) == [expected]
     for unsafe in ("Alice Example", "secret-token", "private.test"):
         assert unsafe not in str(caught.value)
 
@@ -175,6 +185,7 @@ def test_http_failures_are_classified_and_sanitized(
 def test_retry_after_unsafe_header_uses_safe_default(monkeypatch):
     monkeypatch.setenv("ULTRAVOX_API_KEY", "DUMMY-TEST-TOKEN")
     client = UltravoxClient()
+    monkeypatch.setattr("ultravox_mcp.client.time.sleep", lambda _seconds: None)
     response = Mock(
         status_code=429, ok=False, headers={"Retry-After": "https://private.test/token"}
     )
@@ -182,3 +193,30 @@ def test_retry_after_unsafe_header_uses_safe_default(monkeypatch):
     with pytest.raises(RateLimitError, match="Retry after 10 seconds") as caught:
         client._request("GET", "/calls", _rate_retries=3)
     assert "private.test" not in str(caught.value)
+
+
+def test_unexpected_pydantic_failure_is_not_argument_validation(monkeypatch, caplog):
+    from pydantic import ValidationError
+
+    failure = ValidationError.from_exception_data(
+        "Vendor",
+        [
+            {
+                "type": "string_type",
+                "loc": ("private@example.invalid",),
+                "input": "secret-token",
+            }
+        ],
+    )
+
+    class FakeClient:
+        def get_account(self):
+            raise failure
+
+    monkeypatch.setattr(server_module, "_client", FakeClient)
+    caplog.set_level(logging.WARNING)
+    result = _call("get_account")
+    assert result.is_error
+    assert _texts(result) == ["Error executing tool get_account"]
+    assert "private@example.invalid" not in caplog.text
+    assert "secret-token" not in caplog.text
