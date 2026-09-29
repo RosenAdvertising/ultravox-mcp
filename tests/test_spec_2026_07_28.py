@@ -156,6 +156,25 @@ def test_resource_read_has_cache_metadata_and_result_type(
     assert result["contents"][0]["uri"] == uri
 
 
+def test_resource_request_failure_uses_safe_resource_error(
+    wire_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import ultravox_mcp.server as server_module
+    from ultravox_mcp.client import VendorHTTPError
+
+    class FakeClient:
+        def list_voices(self, page_size: int) -> dict[str, object]:
+            raise VendorHTTPError(
+                "Ultravox API error 502: The service rejected the request."
+            )
+
+    monkeypatch.setattr(server_module, "_client", FakeClient)
+    uri = "ultravox://voices"
+    response = _post(wire_client, "resources/read", {"uri": uri}, name_header=uri)
+    assert "The service rejected the request" in response.text
+    assert "Error reading resource" not in response.text
+
+
 def test_tool_order_schemas_and_structured_result(
     wire_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

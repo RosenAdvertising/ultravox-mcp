@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+from urllib.parse import quote
 
 import requests
 
@@ -53,7 +54,7 @@ def _retry_after_seconds(resp, default=10):
         # are not reflected to the caller.
         if not str(value).isascii() or not str(value).isdigit():
             return default
-        return min(max(int(value), 1), 3600)
+        return max(int(value), 0)
     except (TypeError, ValueError):
         return default
 
@@ -84,7 +85,7 @@ def _safe_vendor_reason(resp) -> str:
 
 def _json_response(resp):
     try:
-        return resp.json()
+        payload = resp.json()
     except ValueError:
         logger.warning(
             "ultravox_response_rejected",
@@ -93,6 +94,13 @@ def _json_response(resp):
         raise VendorHTTPError(
             f"Ultravox API returned non-JSON ({resp.status_code})"
         ) from None
+    if isinstance(payload, dict) and payload.get("success") is False:
+        logger.warning(
+            "ultravox_response_rejected",
+            extra={"reason": "unsuccessful_response", "status_code": resp.status_code},
+        )
+        raise VendorHTTPError("Ultravox API reported that the operation failed.")
+    return payload
 
 
 def _validate_page_size(page_size: int) -> int:
@@ -116,7 +124,7 @@ class UltravoxClient:
                 extra={"reason": "missing_api_key"},
             )
             raise MissingCredentialsError(
-                "No Ultravox API key found. Set ULTRAVOX_API_KEY or run: ultravox-mcp-setup"
+                "No Ultravox API key found. Set ULTRAVOX_API_KEY or run: ultravox-mcp-setup, then restart the MCP server."
             )
         self.session = requests.Session()
         self.session.headers.update(
@@ -129,29 +137,52 @@ class UltravoxClient:
 
     def _request(self, method, path, params=None, json_body=None, _rate_retries=0):
         url = f"{BASE_URL}/{path.lstrip('/')}"
-        resp = self.session.request(method, url, params=params, json=json_body)
-        if resp.status_code in (401, 403):
+        try:
+            resp = self.session.request(
+                method, url, params=params, json=json_body, timeout=30
+            )
+        except (requests.Timeout, requests.ConnectionError):
+            if method.upper() == "GET":
+                message = "Ultravox request timed out or the connection failed. Check connectivity and retry."
+            else:
+                message = "Ultravox request timed out or the connection failed; the outcome is unknown. Check whether the operation completed before retrying."
+            raise VendorHTTPError(message) from None
+        if resp.status_code == 401:
             logger.warning(
                 "ultravox_request_rejected",
                 extra={"reason": "invalid_api_key", "status_code": resp.status_code},
             )
             raise AuthenticationError(
-                "Ultravox authorization was rejected or expired. Re-authorize with: ultravox-mcp-setup"
+                "Ultravox authorization expired. Re-run ultravox-mcp-setup."
+            )
+        if resp.status_code == 403:
+            raise AuthenticationError(
+                "Ultravox access denied: the connected account lacks permission for this action (or the authorization expired; re-run ultravox-mcp-setup if so)."
             )
         if resp.status_code == 429 and _rate_retries < 3:
             wait = _retry_after_seconds(resp)
+            spent = getattr(self, "_retry_sleep_budget", 0)
+            if wait > 60 - spent:
+                raise RateLimitError(
+                    f"Ultravox rate limit reached (HTTP 429). Retry after {wait} seconds."
+                )
             logger.warning(
                 "ultravox_request_rate_limited",
                 extra={"retry_after_seconds": wait},
             )
-            time.sleep(wait)
-            return self._request(
-                method,
-                path,
-                params=params,
-                json_body=json_body,
-                _rate_retries=_rate_retries + 1,
-            )
+            self._retry_sleep_budget = spent + wait
+            try:
+                time.sleep(wait)
+                return self._request(
+                    method,
+                    path,
+                    params=params,
+                    json_body=json_body,
+                    _rate_retries=_rate_retries + 1,
+                )
+            finally:
+                if _rate_retries == 0:
+                    self._retry_sleep_budget = 0
         if resp.status_code == 204:
             return {"success": True}
         if not resp.ok:
@@ -205,7 +236,7 @@ class UltravoxClient:
 
     def get_call(self, call_id: str):
         """Get a single call by ID."""
-        return self.get(f"/calls/{call_id}")
+        return self.get(f"/calls/{quote(str(call_id), safe='')}")
 
     def create_call(
         self,
@@ -232,12 +263,14 @@ class UltravoxClient:
 
     def delete_call(self, call_id: str):
         """Delete a call by ID."""
-        return self.delete(f"/calls/{call_id}")
+        return self.delete(f"/calls/{quote(str(call_id), safe='')}")
 
     def list_call_messages(self, call_id: str, page_size: int = 50):
         """List messages (transcript) for a call."""
         params = {"pageSize": _validate_page_size(page_size)}
-        return self.get(f"/calls/{call_id}/messages", params=params)
+        return self.get(
+            f"/calls/{quote(str(call_id), safe='')}/messages", params=params
+        )
 
     # -------------------------------------------------------------------------
     # Tools
@@ -250,7 +283,7 @@ class UltravoxClient:
 
     def get_tool(self, tool_id: str):
         """Get a single tool by ID."""
-        return self.get(f"/tools/{tool_id}")
+        return self.get(f"/tools/{quote(str(tool_id), safe='')}")
 
     def create_tool(
         self,
@@ -297,7 +330,7 @@ class UltravoxClient:
 
     def delete_tool(self, tool_id: str):
         """Delete a tool by ID."""
-        return self.delete(f"/tools/{tool_id}")
+        return self.delete(f"/tools/{quote(str(tool_id), safe='')}")
 
     # -------------------------------------------------------------------------
     # Voices

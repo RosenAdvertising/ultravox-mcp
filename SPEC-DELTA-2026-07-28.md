@@ -29,5 +29,5 @@ uv lock --check --offline
 
 The tests use an in-process transport and mocked Ultravox responses; they do
 not verify a live account or deployed transport. See the
-[migration report](SPEC-MIGRATION-REPORT.md) for the server changes and the
-remaining product decision about safe tool-error messages.
+[migration report](SPEC-MIGRATION-REPORT.md) for server changes and safe
+tool-error behavior.

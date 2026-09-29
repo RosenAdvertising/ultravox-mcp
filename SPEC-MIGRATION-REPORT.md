@@ -50,9 +50,11 @@ credential store. Tests use fake account data, mocked vendor requests, and an
 in-process transport. They do not establish live vendor behavior, deployed
 stdio behavior, vendor ordering, or tenant isolation.
 
-## Product decision for Toby
+## Error behavior
 
-MCP 2.2.0 masks messages from tool exceptions other than `ToolError` or
-`ResourceError`. Retaining that masking limits information leakage; raising
-`ToolError` with explicitly safe messages would give clients more actionable
-feedback. Existing exception behavior is unchanged pending Toby's choice.
+Vendor request failures are classified locally and surfaced as safe MCP tool
+errors. Messages omit vendor response text, credentials, and argument values.
+Transport failures on reads advise checking connectivity and retrying; on
+mutations they explain that completion is uncertain and ask the caller to check
+the operation's status before retrying. Setup and verification report actionable
+credential or authorization guidance without exposing secret values.

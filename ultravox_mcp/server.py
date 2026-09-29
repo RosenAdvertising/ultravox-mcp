@@ -12,7 +12,11 @@ import logging
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
-from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
+from mcp.server.mcpserver.exceptions import (
+    ResourceError,
+    ToolError,
+    UnexpectedToolError,
+)
 from mcp_types import CallToolResult, TextContent
 from pydantic import Field, ValidationError
 
@@ -269,13 +273,39 @@ def list_voices(page_size: PageSize = 25) -> dict[str, Any]:
 @mcp.resource("ultravox://voices", mime_type="application/json")
 def voices_resource() -> str:
     """Available Ultravox voices — read-only reference data for call provisioning."""
-    return json.dumps(_client().list_voices(page_size=100), indent=2)
+    try:
+        return json.dumps(_client().list_voices(page_size=100), indent=2)
+    except (
+        MissingCredentialsError,
+        AuthenticationError,
+        VendorHTTPError,
+        RateLimitError,
+        NotFoundError,
+    ) as exc:
+        raise ResourceError(str(exc)) from None
+    except Exception:
+        raise ResourceError(
+            "Unable to read this Ultravox resource. Try again or check the connection."
+        ) from None
 
 
 @mcp.resource("ultravox://tools", mime_type="application/json")
 def tools_resource() -> str:
     """All Ultravox tools configured for this account — read-only reference data."""
-    return json.dumps(_client().list_tools(page_size=100), indent=2)
+    try:
+        return json.dumps(_client().list_tools(page_size=100), indent=2)
+    except (
+        MissingCredentialsError,
+        AuthenticationError,
+        VendorHTTPError,
+        RateLimitError,
+        NotFoundError,
+    ) as exc:
+        raise ResourceError(str(exc)) from None
+    except Exception:
+        raise ResourceError(
+            "Unable to read this Ultravox resource. Try again or check the connection."
+        ) from None
 
 
 @mcp.resource("ultravox://security-notes", mime_type="text/markdown")
