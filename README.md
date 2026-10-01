@@ -93,8 +93,9 @@ With an available keyring backend, the secret is saved under the service name
 without Secret Service), or if you set `ULTRAVOX_MCP_USE_KEYRING=0`, the key
 falls back to a `~/.ultravox-mcp/.env` file with `0600` permissions.
 
-On Windows, the OS credential store is used; the file fallback is not supported
-because private secret-file writes require `os.fchmod`.
+On Windows, the file is stored in the user's profile and protected by Windows'
+default per-user access rules. On POSIX, files are created with `0600` permissions
+and writes fail closed if private permissions cannot be established.
 
 **Read order.** Values resolve in the order OS keyring → process environment →
 `.env` file. So a rotated key in the keyring always wins, and a value exported in
