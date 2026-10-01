@@ -29,6 +29,8 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from ultravox_mcp.private_file import write_private_file
+
 # --- per-MCP configuration --------------------------------------------------
 SERVICE_NAME = "ultravox-mcp"
 CONFIG_DIR = Path.home() / ".ultravox-mcp"
@@ -102,9 +104,7 @@ def _write_env_file(values: dict[str, str]) -> None:
     with suppress(OSError):
         CONFIG_DIR.chmod(0o700)
     lines = [f"{k}={v}" for k, v in values.items()]
-    ENV_FILE.write_text("\n".join(lines) + ("\n" if lines else ""))
-    with suppress(OSError):
-        ENV_FILE.chmod(0o600)
+    write_private_file(ENV_FILE, "\n".join(lines) + ("\n" if lines else ""))
 
 
 def get_secret(key: str, default: str = "") -> str:

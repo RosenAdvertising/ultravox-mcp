@@ -9,6 +9,7 @@ from urllib.parse import quote
 import requests
 
 from ultravox_mcp import credentials
+from ultravox_mcp.url_security import validate_public_https
 
 BASE_URL = "https://api.ultravox.ai/api"
 MAX_PAGE_SIZE = 200
@@ -321,6 +322,7 @@ class UltravoxClient:
         wrapper with a mandatory `modelToolName` field (the name the AI
         model uses when calling the tool).
         """
+        validate_http_config(http_config)
         required_set = set(parameters_schema.get("required") or [])
         dynamic_params = [
             {
@@ -357,3 +359,34 @@ class UltravoxClient:
         """List available Ultravox voices."""
         params = {"pageSize": _validate_page_size(page_size)}
         return self.get("/voices", params=params)
+
+
+def validate_http_config(http_config):
+    """Validate HTTP tool configuration before constructing a credentialed client."""
+    if not isinstance(http_config, dict) or set(http_config) - {
+        "baseUrlPattern",
+        "httpMethod",
+    }:
+        raise ArgumentValidationError(
+            "http_config accepts only baseUrlPattern and httpMethod."
+        )
+    method = http_config.get("httpMethod", "")
+    if not isinstance(method, str) or method not in {
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "HEAD",
+        "OPTIONS",
+    }:
+        raise ArgumentValidationError(
+            "httpMethod must be GET, POST, PUT, PATCH, DELETE, HEAD, or OPTIONS."
+        )
+    try:
+        validate_public_https(http_config.get("baseUrlPattern"))
+    except ValueError:
+        raise ArgumentValidationError(
+            "baseUrlPattern must be a public HTTPS URL with a fixed hostname and no userinfo. "
+            "Configure ULTRAVOX_ALLOWED_DESTINATION_HOSTS with trusted hosts."
+        ) from None

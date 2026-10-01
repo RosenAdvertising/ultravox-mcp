@@ -240,6 +240,9 @@ def create_tool(
     parameters_schema: JSON Schema object describing the tool's input parameters.
     http_config: HTTP backend config object.
     """
+    from ultravox_mcp.client import validate_http_config
+
+    validate_http_config(http_config)
     return _client().create_tool(
         name=name,
         description=description,
