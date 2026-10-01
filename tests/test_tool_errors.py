@@ -238,14 +238,14 @@ def test_transport_error_types_are_classified(monkeypatch, transport_error):
     assert "private token" not in str(caught.value)
 
 
-def test_string_id_is_quoted_before_preparation_and_timeout_is_present(monkeypatch):
+def test_string_id_is_validated_before_preparation_and_timeout_is_present(monkeypatch):
     monkeypatch.setenv("ULTRAVOX_API_KEY", "DUMMY-TEST-TOKEN")
     client = UltravoxClient()
     response = Mock(status_code=200, ok=True, json=Mock(return_value={}))
     client.session.request = Mock(return_value=response)
-    client.get_call("../x")
+    client.get_call("normal-id")
     args, kwargs = client.session.request.call_args
-    assert args[1].endswith("/calls/..%2Fx")
+    assert args[1].endswith("/calls/normal-id")
     assert kwargs["timeout"] == 30
 
 
@@ -386,7 +386,7 @@ def test_real_dispatch_transport_contract(monkeypatch, error_type, write):
     client.session.request = request
     monkeypatch.setattr(server_module, "_client", lambda: client)
     name = "delete_call" if write else "get_account"
-    arguments: dict[str, object] = {"call_id": "../x"} if write else {}
+    arguments: dict[str, object] = {"call_id": "normal-id"} if write else {}
     result = _call(name, arguments)
     expected = (
         "Ultravox request timed out or the connection failed; the outcome is unknown. Check whether the operation completed before retrying."
@@ -401,7 +401,7 @@ def test_real_dispatch_transport_contract(monkeypatch, error_type, write):
     if write:
         assert (
             requests.Request("DELETE", args[1]).prepare().path_url
-            == "/api/calls/..%2Fx"
+            == "/api/calls/normal-id"
         )
 
 
@@ -469,6 +469,6 @@ def test_unsuccessful_200_is_a_tool_error(monkeypatch):
         )
     )
     monkeypatch.setattr(server_module, "_client", lambda: client)
-    result = _call("delete_call", {"call_id": "../x"})
+    result = _call("delete_call", {"call_id": "normal-id"})
     assert result.is_error is True
     assert _texts(result) == ["Ultravox API reported that the operation failed."]

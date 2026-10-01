@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import time
 from urllib.parse import quote
 
@@ -13,6 +14,22 @@ BASE_URL = "https://api.ultravox.ai/api"
 MAX_PAGE_SIZE = 200
 
 logger = logging.getLogger(__name__)
+
+
+def _path_id(value, parameter: str) -> str:
+    """Validate a plain identifier before URL quoting or any HTTP request."""
+    expected = (
+        "a non-empty plain identifier (ASCII letters, digits, -, _, ., ~); not . or .."
+    )
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (str, int))
+        or str(value) in {".", ".."}
+        or re.fullmatch(r"[A-Za-z0-9._~-]+", str(value)) is None
+    ):
+        message = f"Invalid argument '{parameter}': use {expected}."
+        raise ArgumentValidationError(message)
+    return quote(str(value), safe="")
 
 
 class UltravoxClientError(RuntimeError):
@@ -236,7 +253,7 @@ class UltravoxClient:
 
     def get_call(self, call_id: str):
         """Get a single call by ID."""
-        return self.get(f"/calls/{quote(str(call_id), safe='')}")
+        return self.get(f"/calls/{_path_id(call_id, 'call_id')}")
 
     def create_call(
         self,
@@ -263,13 +280,13 @@ class UltravoxClient:
 
     def delete_call(self, call_id: str):
         """Delete a call by ID."""
-        return self.delete(f"/calls/{quote(str(call_id), safe='')}")
+        return self.delete(f"/calls/{_path_id(call_id, 'call_id')}")
 
     def list_call_messages(self, call_id: str, page_size: int = 50):
         """List messages (transcript) for a call."""
         params = {"pageSize": _validate_page_size(page_size)}
         return self.get(
-            f"/calls/{quote(str(call_id), safe='')}/messages", params=params
+            f"/calls/{_path_id(call_id, 'call_id')}/messages", params=params
         )
 
     # -------------------------------------------------------------------------
@@ -283,7 +300,7 @@ class UltravoxClient:
 
     def get_tool(self, tool_id: str):
         """Get a single tool by ID."""
-        return self.get(f"/tools/{quote(str(tool_id), safe='')}")
+        return self.get(f"/tools/{_path_id(tool_id, 'tool_id')}")
 
     def create_tool(
         self,
@@ -330,7 +347,7 @@ class UltravoxClient:
 
     def delete_tool(self, tool_id: str):
         """Delete a tool by ID."""
-        return self.delete(f"/tools/{quote(str(tool_id), safe='')}")
+        return self.delete(f"/tools/{_path_id(tool_id, 'tool_id')}")
 
     # -------------------------------------------------------------------------
     # Voices
