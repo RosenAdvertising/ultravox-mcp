@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
 """
-ultravox-mcp — FastMCP server for the Ultravox voice AI REST API.
+ultravox-mcp — MCP server for the Ultravox voice AI REST API.
 
 SCOPE NOTE: This server covers the Ultravox REST layer only.
   - create_call returns a joinUrl.
@@ -9,12 +8,115 @@ SCOPE NOTE: This server covers the Ultravox REST layer only.
 """
 
 import json
-from mcp.server.fastmcp import FastMCP
+import logging
+from typing import Annotated, Any
 
-from .client import UltravoxClient
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import (
+    ResourceError,
+    ToolError,
+    UnexpectedToolError,
+)
+from mcp_types import CallToolResult, TextContent
+from pydantic import Field, ValidationError
 
-mcp = FastMCP(
+from .client import (
+    ArgumentValidationError,
+    AuthenticationError,
+    MissingCredentialsError,
+    NotFoundError,
+    RateLimitError,
+    UltravoxClient,
+    VendorHTTPError,
+)
+
+PageSize = Annotated[int, Field(ge=1, le=200)]
+
+logger = logging.getLogger(__name__)
+
+
+class ActionableMCPServer(MCPServer):
+    """Convert classified failures to safe tool results at the shared MCP boundary."""
+
+    async def call_tool(self, name, arguments, context=None):
+        if self._tool_manager.get_tool(name) is None:
+            return _tool_error("Unknown tool. Choose a name from tools/list.")
+        try:
+            return await super().call_tool(name, arguments, context)
+        except (ToolError, UnexpectedToolError) as exc:
+            cause: BaseException | None = exc
+            while cause is not None:
+                if isinstance(
+                    cause,
+                    MissingCredentialsError
+                    | AuthenticationError
+                    | VendorHTTPError
+                    | RateLimitError
+                    | NotFoundError
+                    | ArgumentValidationError,
+                ):
+                    return _tool_error(str(cause))
+                cause = cause.__cause__
+
+            if not isinstance(exc, UnexpectedToolError) and isinstance(
+                exc.__cause__, ValidationError
+            ):
+                return _validation_result(self, name, exc.__cause__)
+
+            logger.warning("unexpected_tool_error")
+            return _tool_error(f"Error executing tool {name}")
+
+
+def _tool_error(message: str) -> CallToolResult:
+    return CallToolResult(
+        content=[TextContent(type="text", text=message)], is_error=True
+    )
+
+
+def _validation_result(
+    server: ActionableMCPServer, name: str, error: ValidationError
+) -> CallToolResult:
+    registered = server._tool_manager.get_tool(name)
+    properties: dict[str, Any] = {}
+    if registered:
+        raw_properties = registered.parameters.get("properties", {})
+        if isinstance(raw_properties, dict):
+            properties = raw_properties
+    issues: list[str] = []
+    for issue in error.errors(include_input=False, include_url=False):
+        field = str(issue["loc"][0]) if issue["loc"] else "argument"
+        if field not in properties:
+            field = "argument"
+        field_schema = properties.get(field, {})
+        expected = _expected_shape(field_schema)
+        detail = f"{field} (expected {expected})"
+        if detail not in issues:
+            issues.append(detail)
+    if not issues:
+        issues.append("arguments (expected the registered input schema)")
+    return _tool_error(f"Invalid arguments for {name}: " + "; ".join(issues) + ".")
+
+
+def _expected_shape(schema: dict[str, Any]) -> str:
+    if "minimum" in schema or "maximum" in schema:
+        kind = "an integer" if schema.get("type") == "integer" else "a number"
+        return f"{kind} from {schema.get('minimum', 'the minimum')} to {schema.get('maximum', 'the maximum')}"
+    kind = schema.get("type")
+    if not isinstance(kind, str):
+        return "the required input shape"
+    return {
+        "string": "a string",
+        "integer": "an integer",
+        "number": "a number",
+        "object": "an object",
+        "array": "an array",
+        "boolean": "a boolean",
+    }.get(kind, "the required input shape")
+
+
+mcp = ActionableMCPServer(
     "ultravox-mcp",
+    version="0.1.0",
     instructions=(
         "MCP server for Ultravox voice AI — REST layer only. "
         "Use create_call to provision a call; the response includes a joinUrl "
@@ -35,7 +137,7 @@ def _client() -> UltravoxClient:
 
 
 @mcp.tool()
-def get_account() -> dict:
+def get_account() -> dict[str, Any]:
     """Return account details for the authenticated Ultravox user."""
     return _client().get_account()
 
@@ -46,18 +148,18 @@ def get_account() -> dict:
 
 
 @mcp.tool()
-def list_calls(page_size: int = 25, cursor: str = "") -> dict:
+def list_calls(page_size: PageSize = 25, cursor: str = "") -> dict[str, Any]:
     """
     List Ultravox calls.
 
-    page_size: Number of results per page (default 25).
+    page_size: Number of results to return (1-200, default 25).
     cursor: Pagination cursor from a previous response. Leave blank for the first page.
     """
     return _client().list_calls(page_size=page_size, cursor=cursor)
 
 
 @mcp.tool()
-def get_call(call_id: str) -> dict:
+def get_call(call_id: str) -> dict[str, Any]:
     """Get details for a single Ultravox call by its ID."""
     return _client().get_call(call_id)
 
@@ -69,7 +171,7 @@ def create_call(
     temperature: float = 0.7,
     first_speaker: str = "FIRST_SPEAKER_AGENT",
     max_duration: str = "600s",
-) -> dict:
+) -> dict[str, Any]:
     """
     Create a new Ultravox call. Returns a joinUrl — use your WebSocket/SDK client
     to join. The MCP handles REST only; real-time audio is out of scope.
@@ -90,18 +192,18 @@ def create_call(
 
 
 @mcp.tool()
-def delete_call(call_id: str) -> dict:
+def delete_call(call_id: str) -> dict[str, Any]:
     """Delete an Ultravox call by its ID."""
     return _client().delete_call(call_id)
 
 
 @mcp.tool()
-def list_call_messages(call_id: str, page_size: int = 50) -> dict:
+def list_call_messages(call_id: str, page_size: PageSize = 50) -> dict[str, Any]:
     """
     Retrieve the message transcript for a completed or active Ultravox call.
 
     call_id: The call ID to fetch messages for.
-    page_size: Number of messages per page (default 50).
+    page_size: Number of messages to return (1-200, default 50).
     """
     return _client().list_call_messages(call_id=call_id, page_size=page_size)
 
@@ -112,13 +214,13 @@ def list_call_messages(call_id: str, page_size: int = 50) -> dict:
 
 
 @mcp.tool()
-def list_tools(page_size: int = 25) -> dict:
+def list_tools(page_size: PageSize = 25) -> dict[str, Any]:
     """List all Ultravox tools configured for this account."""
     return _client().list_tools(page_size=page_size)
 
 
 @mcp.tool()
-def get_tool(tool_id: str) -> dict:
+def get_tool(tool_id: str) -> dict[str, Any]:
     """Get details for a single Ultravox tool by its ID."""
     return _client().get_tool(tool_id)
 
@@ -127,9 +229,9 @@ def get_tool(tool_id: str) -> dict:
 def create_tool(
     name: str,
     description: str,
-    parameters_schema: dict,
-    http_config: dict,
-) -> dict:
+    parameters_schema: dict[str, Any],
+    http_config: dict[str, Any],
+) -> dict[str, Any]:
     """
     Create a new Ultravox tool.
 
@@ -138,6 +240,9 @@ def create_tool(
     parameters_schema: JSON Schema object describing the tool's input parameters.
     http_config: HTTP backend config object.
     """
+    from ultravox_mcp.client import validate_http_config
+
+    validate_http_config(http_config)
     return _client().create_tool(
         name=name,
         description=description,
@@ -147,7 +252,7 @@ def create_tool(
 
 
 @mcp.tool()
-def delete_tool(tool_id: str) -> dict:
+def delete_tool(tool_id: str) -> dict[str, Any]:
     """Delete an Ultravox tool by its ID."""
     return _client().delete_tool(tool_id)
 
@@ -158,7 +263,7 @@ def delete_tool(tool_id: str) -> dict:
 
 
 @mcp.tool()
-def list_voices(page_size: int = 25) -> dict:
+def list_voices(page_size: PageSize = 25) -> dict[str, Any]:
     """List available Ultravox voices."""
     return _client().list_voices(page_size=page_size)
 
@@ -171,13 +276,39 @@ def list_voices(page_size: int = 25) -> dict:
 @mcp.resource("ultravox://voices", mime_type="application/json")
 def voices_resource() -> str:
     """Available Ultravox voices — read-only reference data for call provisioning."""
-    return json.dumps(_client().list_voices(page_size=100), indent=2)
+    try:
+        return json.dumps(_client().list_voices(page_size=100), indent=2)
+    except (
+        MissingCredentialsError,
+        AuthenticationError,
+        VendorHTTPError,
+        RateLimitError,
+        NotFoundError,
+    ) as exc:
+        raise ResourceError(str(exc)) from None
+    except Exception:
+        raise ResourceError(
+            "Unable to read this Ultravox resource. Try again or check the connection."
+        ) from None
 
 
 @mcp.resource("ultravox://tools", mime_type="application/json")
 def tools_resource() -> str:
     """All Ultravox tools configured for this account — read-only reference data."""
-    return json.dumps(_client().list_tools(page_size=100), indent=2)
+    try:
+        return json.dumps(_client().list_tools(page_size=100), indent=2)
+    except (
+        MissingCredentialsError,
+        AuthenticationError,
+        VendorHTTPError,
+        RateLimitError,
+        NotFoundError,
+    ) as exc:
+        raise ResourceError(str(exc)) from None
+    except Exception:
+        raise ResourceError(
+            "Unable to read this Ultravox resource. Try again or check the connection."
+        ) from None
 
 
 @mcp.resource("ultravox://security-notes", mime_type="text/markdown")
@@ -327,8 +458,8 @@ def review_tool_inventory() -> str:
 # ---------------------------------------------------------------------------
 
 
-def main():
-    mcp.run()
+def main() -> None:
+    mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

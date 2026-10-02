@@ -8,6 +8,8 @@
 
 MCP server for the [Ultravox](https://ultravox.ai) voice AI platform — REST layer only.
 
+Requires Python MCP SDK >=2.2,<3; the protocol revision is 2026-07-28.
+
 ## Scope
 
 This server covers the **Ultravox REST API**:
@@ -84,12 +86,16 @@ system's native secret store via the cross-platform
 | Windows | Credential Manager                       |
 | Linux   | Secret Service (GNOME Keyring / KWallet) |
 
-The secret is saved under the service name `ultravox-mcp`. Nothing is written to
-disk in clear text.
+With an available keyring backend, the secret is saved under the service name
+`ultravox-mcp` without a clear-text file copy.
 
 **File fallback.** On a host with no keyring backend (e.g. a headless Linux box
 without Secret Service), or if you set `ULTRAVOX_MCP_USE_KEYRING=0`, the key
 falls back to a `~/.ultravox-mcp/.env` file with `0600` permissions.
+
+On Windows, the file is stored in the user's profile and protected by Windows'
+default per-user access rules. On POSIX, files are created with `0600` permissions
+and writes fail closed if private permissions cannot be established.
 
 **Read order.** Values resolve in the order OS keyring → process environment →
 `.env` file. So a rotated key in the keyring always wins, and a value exported in
@@ -112,3 +118,27 @@ MCP create_call  →  Ultravox REST  →  { callId, joinUrl, ... }
 ```
 
 The MCP handles steps 1–3. Everything after the `joinUrl` is your application's responsibility.
+
+### Approved destination URLs
+
+Set `ULTRAVOX_ALLOWED_DESTINATION_HOSTS` in the server environment, for example
+`ULTRAVOX_ALLOWED_DESTINATION_HOSTS=hooks.firm.example,.integrations.firm.example`.
+Comma-separated exact hosts allow only that host; a leading dot allows the domain
+and its subdomains. Matching ignores case and trailing dots and normalizes IDNA.
+An empty or unset list refuses destination URLs before any request. HTTPS, no
+userinfo, and public literal addresses remain required. This administrator-owned
+list prevents model-supplied destinations from sending data to arbitrary hosts,
+including private-address DNS aliases and unapproved redirectors. Approve only
+hosts whose DNS and redirects the firm trusts; the vendor executes requests later.
+Tools cannot change this setting.
+
+### Call join URL is a secret
+
+`create_call` returns `joinUrl` to the user's own client so it can join the call.
+**`joinUrl` is a one-time secret: treat it like a short-lived token.** Do not
+share it or put it in logs, analytics, screenshots, or persistent transcripts.
+
+`create_tool` accepts only `baseUrlPattern` and `httpMethod` in `http_config`.
+The method must be GET, POST, PUT, PATCH, DELETE, HEAD, or OPTIONS. URL templates
+may vary the path/query but cannot vary the HTTPS scheme or hostname. Headers
+and other keys in this dictionary are rejected.

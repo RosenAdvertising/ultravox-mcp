@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 ultravox-mcp-setup — interactive setup wizard.
 
@@ -7,6 +6,7 @@ Prompts for the Ultravox API key, saves it to the OS keyring (or a
 check against the API.
 """
 
+import getpass
 import os
 import sys
 
@@ -27,13 +27,27 @@ def main() -> None:
     if existing:
         masked = existing[:6] + "..." + existing[-4:] if len(existing) > 10 else "****"
         print(f"Existing API key found: {masked}")
-        overwrite = input("Overwrite? [y/N] ").strip().lower()
+        try:
+            overwrite = input("Overwrite? [y/N] ").strip().lower()
+        except EOFError:
+            print(
+                "No setup input received. Re-run ultravox-mcp-setup in an interactive terminal.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         if overwrite != "y":
             print("Keeping existing key.")
             _run_verify()
             return
 
-    api_key = input("Paste your Ultravox API key: ").strip()
+    try:
+        api_key = getpass.getpass("Paste your Ultravox API key: ").strip()
+    except EOFError:
+        print(
+            "No setup input received. Re-run ultravox-mcp-setup in an interactive terminal.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     if not api_key:
         print("No key entered. Aborting.", file=sys.stderr)
         sys.exit(1)
@@ -64,6 +78,7 @@ def _run_verify() -> None:
         print('  "ultravox": {')
         print('    "command": "ultravox-mcp"')
         print("  }")
+        print("Restart the MCP server to load the saved API key.")
         print()
     else:
         print()
