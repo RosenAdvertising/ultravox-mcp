@@ -106,7 +106,7 @@ def test_spec_guard_and_modern_discovery(wire_client: TestClient) -> None:
     assert result["cacheScope"] == "private"
     assert result["_meta"]["io.modelcontextprotocol/serverInfo"] == {
         "name": "ultravox-mcp",
-        "version": "0.1.0",
+        "version": "0.2.0",
     }
     assert result["capabilities"] == {
         "prompts": {"listChanged": True},

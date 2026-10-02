@@ -116,7 +116,7 @@ def _expected_shape(schema: dict[str, Any]) -> str:
 
 mcp = ActionableMCPServer(
     "ultravox-mcp",
-    version="0.1.0",
+    version="0.2.0",
     instructions=(
         "MCP server for Ultravox voice AI — REST layer only. "
         "Use create_call to provision a call; the response includes a joinUrl "
