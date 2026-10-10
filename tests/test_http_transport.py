@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
+import importlib.metadata
+import sys
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
@@ -289,3 +292,63 @@ def test_distinct_requests_do_not_share_connection_state(
     ]
     assert leaked == []
     assert len(set(state_ids)) == 9
+
+
+def test_empty_transport_selects_stdio(monkeypatch: pytest.MonkeyPatch) -> None:
+    for value in ("", "   "):
+        monkeypatch.setenv("ULTRAVOX_MCP_TRANSPORT", value)
+        assert server._requested_transport() == "stdio"
+
+    monkeypatch.setenv("ULTRAVOX_MCP_TRANSPORT", "")
+    seen: dict[str, Any] = {}
+
+    def fake_run(*args: object, **kwargs: object) -> None:
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr(server.mcp, "run", fake_run)
+    server.main()
+    assert seen["args"] == ()
+    assert seen["kwargs"] == {"transport": "stdio"}
+
+
+def test_empty_host_yields_loopback(monkeypatch: pytest.MonkeyPatch) -> None:
+    for value in ("", "   "):
+        monkeypatch.setenv("ULTRAVOX_MCP_HOST", value)
+        assert server._host() == "127.0.0.1"
+
+
+def test_uppercase_localhost_is_non_loopback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ULTRAVOX_MCP_TRANSPORT", "streamable-http")
+    monkeypatch.setenv("ULTRAVOX_MCP_HOST", "LOCALHOST")
+    monkeypatch.delenv("ULTRAVOX_MCP_ALLOWED_HOSTS", raising=False)
+    assert server._host() == "LOCALHOST"
+    with pytest.raises(SystemExit, match="ULTRAVOX_MCP_ALLOWED_HOSTS"):
+        server.main()
+
+
+def test_server_import_without_installed_distribution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_version = importlib.metadata.version
+
+    def _patched(name: str) -> str:
+        if "ultravox" in str(name).lower():
+            raise importlib.metadata.PackageNotFoundError(str(name))
+        return real_version(name)
+
+    monkeypatch.setattr(importlib.metadata, "version", _patched)
+    import ultravox_mcp
+
+    original = sys.modules.get("ultravox_mcp.server")
+    sys.modules.pop("ultravox_mcp.server", None)
+    try:
+        fresh = importlib.import_module("ultravox_mcp.server")
+        assert fresh.mcp is not None
+    finally:
+        sys.modules.pop("ultravox_mcp.server", None)
+        if original is not None:
+            sys.modules["ultravox_mcp.server"] = original
+            ultravox_mcp.server = original
