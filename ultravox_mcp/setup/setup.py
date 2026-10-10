@@ -12,6 +12,16 @@ import sys
 
 from ultravox_mcp import credentials
 
+# Same configuration as the README's "Usage with Claude Desktop" section.
+CLAUDE_DESKTOP_CONFIG = """{
+  "mcpServers": {
+    "ultravox": {
+      "command": "uv",
+      "args": ["run", "--locked", "--directory", "/absolute/path/to/ultravox-mcp", "ultravox-mcp"]
+    }
+  }
+}"""
+
 
 def main() -> None:
     print("=" * 60)
@@ -75,9 +85,12 @@ def _run_verify() -> None:
         print()
         print("Setup complete. Add this to your Claude Desktop MCP config:")
         print()
-        print('  "ultravox": {')
-        print('    "command": "ultravox-mcp"')
-        print("  }")
+        print(CLAUDE_DESKTOP_CONFIG)
+        print()
+        print(
+            "Replace /absolute/path/to/ultravox-mcp with the path of your clone, "
+            "then restart Claude Desktop."
+        )
         print("Restart the MCP server to load the saved API key.")
         print()
     else:
