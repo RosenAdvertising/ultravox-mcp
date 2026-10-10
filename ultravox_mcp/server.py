@@ -9,6 +9,7 @@ SCOPE NOTE: This server covers the Ultravox REST layer only.
 
 import json
 import logging
+import os
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
@@ -17,9 +18,12 @@ from mcp.server.mcpserver.exceptions import (
     ToolError,
     UnexpectedToolError,
 )
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp_types import CallToolResult, TextContent
 from pydantic import Field, ValidationError
+from starlette.applications import Starlette
 
+from . import __version__
 from .client import (
     ArgumentValidationError,
     AuthenticationError,
@@ -115,8 +119,9 @@ def _expected_shape(schema: dict[str, Any]) -> str:
 
 
 mcp = ActionableMCPServer(
-    "ultravox-mcp",
-    version="0.2.0",
+    name="ultravox-mcp",
+    title="Ultravox MCP",
+    version=__version__,
     instructions=(
         "MCP server for Ultravox voice AI — REST layer only. "
         "Use create_call to provision a call; the response includes a joinUrl "
@@ -458,8 +463,83 @@ def review_tool_inventory() -> str:
 # ---------------------------------------------------------------------------
 
 
+STREAMABLE_HTTP_TRANSPORT = "streamable-http"
+# Hosts the installed SDK protects itself when transport security is left unset.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _requested_transport() -> str:
+    return os.environ.get("ULTRAVOX_MCP_TRANSPORT", "stdio").strip().lower() or "stdio"
+
+
+def _host() -> str:
+    return os.environ.get("ULTRAVOX_MCP_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
+
+def _port() -> int:
+    raw = os.environ.get("PORT", "8080").strip()
+    try:
+        return int(raw)
+    except ValueError:
+        raise SystemExit(f"PORT must be an integer, got {raw!r}") from None
+
+
+def _csv_env(name: str) -> list[str]:
+    return [
+        item.strip() for item in os.environ.get(name, "").split(",") if item.strip()
+    ]
+
+
+def _transport_security() -> TransportSecuritySettings | None:
+    host = _host()
+    if host in _LOOPBACK_HOSTS:
+        return None
+    allowed_hosts = _csv_env("ULTRAVOX_MCP_ALLOWED_HOSTS")
+    if not allowed_hosts:
+        raise SystemExit(
+            "ULTRAVOX_MCP_ALLOWED_HOSTS is required when ULTRAVOX_MCP_HOST "
+            f"is not loopback ({host!r})."
+        )
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=allowed_hosts,
+        allowed_origins=_csv_env("ULTRAVOX_MCP_ALLOWED_ORIGINS"),
+    )
+
+
+def create_serve_app() -> Starlette:
+    return mcp.streamable_http_app(
+        streamable_http_path="/mcp",
+        host=_host(),
+        stateless_http=True,
+        transport_security=_transport_security(),
+    )
+
+
+def _serve_streamable_http() -> None:
+    import uvicorn
+
+    config = uvicorn.Config(
+        create_serve_app(),
+        host=_host(),
+        port=_port(),
+        access_log=False,
+    )
+    uvicorn.Server(config).run()
+
+
 def main() -> None:
-    mcp.run(transport="stdio")
+    transport = _requested_transport()
+    if transport == "stdio":
+        mcp.run(transport="stdio")
+        return
+    if transport == STREAMABLE_HTTP_TRANSPORT:
+        _serve_streamable_http()
+        return
+    raise SystemExit(
+        "Unsupported ULTRAVOX_MCP_TRANSPORT "
+        f"{transport!r}; expected 'stdio' or '{STREAMABLE_HTTP_TRANSPORT}'."
+    )
 
 
 if __name__ == "__main__":

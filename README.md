@@ -8,7 +8,7 @@
 
 MCP server for the [Ultravox](https://ultravox.ai) voice AI platform — REST layer only.
 
-Requires Python MCP SDK >=2.2,<3; the protocol revision is 2026-07-28.
+Requires Python MCP SDK >=2.3,<3; the protocol revision is 2026-07-28.
 
 ## Scope
 
@@ -55,6 +55,27 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   }
 }
 ```
+
+## HTTP mode
+
+Stdio remains the default. Streamable HTTP serves stateless MCP 2026-07-28 requests at `/mcp`.
+
+| Variable | Purpose |
+| --- | --- |
+| `ULTRAVOX_MCP_TRANSPORT` | `stdio` (default) or `streamable-http` |
+| `ULTRAVOX_MCP_HOST` | Bind address. Default `127.0.0.1`. A non-loopback host requires `ULTRAVOX_MCP_ALLOWED_HOSTS`. |
+| `PORT` | Listen port. Default `8080`. Must be an integer. |
+| `ULTRAVOX_MCP_ALLOWED_HOSTS` | Comma-separated `Host` values allowed when `ULTRAVOX_MCP_HOST` is not loopback. |
+| `ULTRAVOX_MCP_ALLOWED_ORIGINS` | Optional comma-separated `Origin` values for a non-loopback host. |
+| `ULTRAVOX_API_KEY` | Ultravox API key. Same variable as stdio; never taken from the request. |
+| `ULTRAVOX_MCP_USE_KEYRING` | Set to `0` to use the file fallback instead of the OS keyring. |
+| `ULTRAVOX_ALLOWED_DESTINATION_HOSTS` | Approved hosts for `create_tool` destination URLs. |
+
+```bash
+ULTRAVOX_MCP_TRANSPORT=streamable-http PORT=8080 ultravox-mcp
+```
+
+The endpoint is `http://127.0.0.1:8080/mcp`.
 
 ## Tools (11)
 
